@@ -8,10 +8,8 @@ import random
 import logging
 import shutil
 
-from selenium import webdriver
+import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
@@ -20,22 +18,7 @@ log = logging.getLogger(__name__)
 IG_BASE = "https://www.instagram.com"
 
 
-def _make_driver() -> webdriver.Chrome:
-    opts = Options()
-    opts.add_argument("--headless=new")
-    opts.add_argument("--no-sandbox")
-    opts.add_argument("--disable-dev-shm-usage")
-    opts.add_argument("--disable-gpu")
-    opts.add_argument("--window-size=375,812")
-    opts.add_argument("--disable-blink-features=AutomationControlled")
-    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
-    opts.add_experimental_option("useAutomationExtension", False)
-    opts.add_argument(
-        "user-agent=Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) "
-        "AppleWebKit/605.1.15 (KHTML, like Gecko) "
-        "Version/16.6 Mobile/15E148 Safari/604.1"
-    )
-
+def _make_driver() -> uc.Chrome:
     chromium_bin = (
         shutil.which("chromium")
         or shutil.which("chromium-browser")
@@ -46,10 +29,24 @@ def _make_driver() -> webdriver.Chrome:
         or "/usr/bin/chromedriver"
     )
 
-    opts.binary_location = chromium_bin
-    service = Service(executable_path=chromedriver_bin)
+    opts = uc.ChromeOptions()
+    opts.add_argument("--headless=new")
+    opts.add_argument("--no-sandbox")
+    opts.add_argument("--disable-dev-shm-usage")
+    opts.add_argument("--disable-gpu")
+    opts.add_argument("--window-size=375,812")
+    opts.add_argument(
+        "user-agent=Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) "
+        "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+        "Version/16.6 Mobile/15E148 Safari/604.1"
+    )
 
-    driver = webdriver.Chrome(service=service, options=opts)
+    driver = uc.Chrome(
+        options=opts,
+        browser_executable_path=chromium_bin,
+        driver_executable_path=chromedriver_bin,
+        use_subprocess=False,
+    )
     return driver
 
 
@@ -68,7 +65,9 @@ def _login(driver, username: str, password: str) -> bool:
         time.sleep(6)
         for text in ("Not Now", "Not now", "Skip"):
             try:
-                driver.find_element(By.XPATH, f"//button[text()='{text}']").click()
+                driver.find_element(
+                    By.XPATH, f"//button[text()='{text}']"
+                ).click()
                 time.sleep(2)
                 break
             except Exception:
@@ -91,7 +90,9 @@ def boost_instagram(
 
     try:
         if not _login(driver, username, password):
-            results["errors"].append("login failed — check IG_USERNAME / IG_PASSWORD in env")
+            results["errors"].append(
+                "login failed — check IG_USERNAME / IG_PASSWORD in env"
+            )
             return results
 
         driver.get(f"{IG_BASE}/{target_account}/")
@@ -125,12 +126,17 @@ def boost_instagram(
 
             if not btns:
                 try:
-                    modal = driver.find_element(By.XPATH, "//div[@role='dialog']")
+                    modal = driver.find_element(
+                        By.XPATH, "//div[@role='dialog']"
+                    )
                     driver.execute_script(
-                        "arguments[0].scrollTop = arguments[0].scrollHeight", modal
+                        "arguments[0].scrollTop = arguments[0].scrollHeight",
+                        modal
                     )
                 except Exception:
-                    driver.execute_script("window.scrollTo(0, document.body.scrollHeight)")
+                    driver.execute_script(
+                        "window.scrollTo(0, document.body.scrollHeight)"
+                    )
                 time.sleep(2)
                 btns = driver.find_elements(
                     By.XPATH, "//button[normalize-space(text())='Follow']"
@@ -140,7 +146,9 @@ def boost_instagram(
                 if followed >= follow_count:
                     break
                 try:
-                    driver.execute_script("arguments[0].scrollIntoView(true);", btn)
+                    driver.execute_script(
+                        "arguments[0].scrollIntoView(true);", btn
+                    )
                     time.sleep(0.5)
                     btn.click()
                     followed += 1
@@ -155,15 +163,23 @@ def boost_instagram(
                     log.warning(f"skip: {e}")
 
             try:
-                modal = driver.find_element(By.XPATH, "//div[@role='dialog']")
+                modal = driver.find_element(
+                    By.XPATH, "//div[@role='dialog']"
+                )
                 driver.execute_script(
-                    "arguments[0].scrollTop = arguments[0].scrollHeight", modal
+                    "arguments[0].scrollTop = arguments[0].scrollHeight",
+                    modal
                 )
             except Exception:
-                driver.execute_script("window.scrollTo(0, document.body.scrollHeight)")
+                driver.execute_script(
+                    "window.scrollTo(0, document.body.scrollHeight)"
+                )
             time.sleep(2)
 
     finally:
-        driver.quit()
+        try:
+            driver.quit()
+        except Exception:
+            pass
 
     return results
