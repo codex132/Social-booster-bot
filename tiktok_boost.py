@@ -7,11 +7,10 @@ import time
 import random
 import logging
 import shutil
+import os
 
-from selenium import webdriver
+import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
@@ -31,22 +30,7 @@ SERVICE_LABELS = {
 SERVICES = list(SERVICE_LABELS.keys())
 
 
-def _make_driver() -> webdriver.Chrome:
-    opts = Options()
-    opts.add_argument("--headless=new")
-    opts.add_argument("--no-sandbox")
-    opts.add_argument("--disable-dev-shm-usage")
-    opts.add_argument("--disable-gpu")
-    opts.add_argument("--window-size=1280,800")
-    opts.add_argument("--disable-blink-features=AutomationControlled")
-    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
-    opts.add_experimental_option("useAutomationExtension", False)
-    opts.add_argument(
-        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    )
-
+def _make_driver() -> uc.Chrome:
     chromium_bin = (
         shutil.which("chromium")
         or shutil.which("chromium-browser")
@@ -57,12 +41,18 @@ def _make_driver() -> webdriver.Chrome:
         or "/usr/bin/chromedriver"
     )
 
-    opts.binary_location = chromium_bin
-    service = Service(executable_path=chromedriver_bin)
+    opts = uc.ChromeOptions()
+    opts.add_argument("--headless=new")
+    opts.add_argument("--no-sandbox")
+    opts.add_argument("--disable-dev-shm-usage")
+    opts.add_argument("--disable-gpu")
+    opts.add_argument("--window-size=1280,800")
 
-    driver = webdriver.Chrome(service=service, options=opts)
-    driver.execute_script(
-        "Object.defineProperty(navigator,'webdriver',{get:()=>undefined})"
+    driver = uc.Chrome(
+        options=opts,
+        browser_executable_path=chromium_bin,
+        driver_executable_path=chromedriver_bin,
+        use_subprocess=False,
     )
     return driver
 
@@ -106,14 +96,17 @@ def boost_tiktok(
         for i in range(loops):
             try:
                 inp = WebDriverWait(driver, 12).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='text']"))
+                    EC.presence_of_element_located(
+                        (By.CSS_SELECTOR, "input[type='text']")
+                    )
                 )
                 inp.clear()
                 inp.send_keys(url)
                 time.sleep(random.uniform(0.8, 1.8))
 
                 submit = driver.find_element(
-                    By.CSS_SELECTOR, "button[type='button'].btn-primary, button.btn-success"
+                    By.CSS_SELECTOR,
+                    "button[type='button'].btn-primary, button.btn-success"
                 )
                 submit.click()
                 time.sleep(random.uniform(3, 5))
@@ -154,6 +147,9 @@ def boost_tiktok(
                 time.sleep(10)
 
     finally:
-        driver.quit()
+        try:
+            driver.quit()
+        except Exception:
+            pass
 
     return results
