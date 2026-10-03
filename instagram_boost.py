@@ -1,15 +1,17 @@
 # instagram_boost.py
 # platform : Instagram
-# method   : follow-back — follows target's followers, they follow back
-# safe cap : 50–100 follows per session, 200/day max
+# method   : follow-back
+# python   : 3.13 compatible
 
 import time
 import random
 import logging
 import shutil
 
-import undetected_chromedriver as uc
+from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
@@ -18,7 +20,7 @@ log = logging.getLogger(__name__)
 IG_BASE = "https://www.instagram.com"
 
 
-def _make_driver() -> uc.Chrome:
+def _make_driver() -> webdriver.Chrome:
     chromium_bin = (
         shutil.which("chromium")
         or shutil.which("chromium-browser")
@@ -29,24 +31,24 @@ def _make_driver() -> uc.Chrome:
         or "/usr/bin/chromedriver"
     )
 
-    opts = uc.ChromeOptions()
+    opts = Options()
+    opts.binary_location = chromium_bin
     opts.add_argument("--headless=new")
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-dev-shm-usage")
     opts.add_argument("--disable-gpu")
     opts.add_argument("--window-size=375,812")
+    opts.add_argument("--disable-blink-features=AutomationControlled")
     opts.add_argument(
         "user-agent=Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) "
         "AppleWebKit/605.1.15 (KHTML, like Gecko) "
         "Version/16.6 Mobile/15E148 Safari/604.1"
     )
+    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
+    opts.add_experimental_option("useAutomationExtension", False)
 
-    driver = uc.Chrome(
-        options=opts,
-        browser_executable_path=chromium_bin,
-        driver_executable_path=chromedriver_bin,
-        use_subprocess=False,
-    )
+    service = Service(executable_path=chromedriver_bin)
+    driver = webdriver.Chrome(service=service, options=opts)
     return driver
 
 
@@ -108,10 +110,9 @@ def boost_instagram(
             time.sleep(3)
         except Exception:
             try:
-                span = driver.find_element(
+                driver.find_element(
                     By.XPATH, "//span[contains(text(),'followers')]"
-                )
-                span.click()
+                ).click()
                 time.sleep(3)
             except Exception as e:
                 results["errors"].append(f"could not open followers modal: {e}")
