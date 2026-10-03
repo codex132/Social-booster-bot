@@ -1,16 +1,18 @@
 # tiktok_boost.py
 # platform : TikTok
-# method   : automates zefoy.com — no API key, no payment, no login
-# services : followers, views, likes, shares, favorites, comment_likes
+# method   : automates zefoy.com
+# python   : 3.13 compatible — no distutils, no webdriver-manager, no undetected-chromedriver
 
 import time
 import random
 import logging
 import shutil
-import os
+import subprocess
 
-import undetected_chromedriver as uc
+from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
@@ -30,7 +32,20 @@ SERVICE_LABELS = {
 SERVICES = list(SERVICE_LABELS.keys())
 
 
-def _make_driver() -> uc.Chrome:
+def _get_chromium_version(binary: str) -> str | None:
+    """Extract major version number from chromium binary."""
+    try:
+        out = subprocess.check_output(
+            [binary, "--version"], stderr=subprocess.DEVNULL
+        ).decode().strip()
+        # output: "Chromium 120.0.6099.71" or "Google Chrome 120.0.6099.71"
+        version = out.split()[-1]          # "120.0.6099.71"
+        return version.split(".")[0]       # "120"
+    except Exception:
+        return None
+
+
+def _make_driver() -> webdriver.Chrome:
     chromium_bin = (
         shutil.which("chromium")
         or shutil.which("chromium-browser")
@@ -41,18 +56,28 @@ def _make_driver() -> uc.Chrome:
         or "/usr/bin/chromedriver"
     )
 
-    opts = uc.ChromeOptions()
+    opts = Options()
+    opts.binary_location = chromium_bin
     opts.add_argument("--headless=new")
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-dev-shm-usage")
     opts.add_argument("--disable-gpu")
     opts.add_argument("--window-size=1280,800")
+    opts.add_argument("--disable-blink-features=AutomationControlled")
+    opts.add_argument(
+        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    )
+    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
+    opts.add_experimental_option("useAutomationExtension", False)
 
-    driver = uc.Chrome(
-        options=opts,
-        browser_executable_path=chromium_bin,
-        driver_executable_path=chromedriver_bin,
-        use_subprocess=False,
+    # selenium 4.15.2: pass service explicitly — disables internal driver finder
+    service = Service(executable_path=chromedriver_bin)
+
+    driver = webdriver.Chrome(service=service, options=opts)
+    driver.execute_script(
+        "Object.defineProperty(navigator,'webdriver',{get:()=>undefined})"
     )
     return driver
 
@@ -82,12 +107,16 @@ def boost_tiktok(
         time.sleep(4)
 
         WebDriverWait(driver, 25).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "div.col-sm-4, div.card"))
+            EC.presence_of_element_located(
+                (By.CSS_SELECTOR, "div.col-sm-4, div.card")
+            )
         )
 
         btn = _find_service_btn(driver, service)
         if not btn:
-            results["errors"].append(f"service '{service}' not found on zefoy today")
+            results["errors"].append(
+                f"service '{service}' not found on zefoy today"
+            )
             return results
 
         btn.click()
@@ -112,25 +141,26 @@ def boost_tiktok(
                 time.sleep(random.uniform(3, 5))
 
                 src = driver.page_source.lower()
-                if "please wait" in src or "cooldown" in src or "timer" in src:
+                if any(w in src for w in ("please wait", "cooldown", "timer")):
                     wait_msg = f"⏱ loop {i+1}: cooldown — waiting 65 s"
                     log.info(wait_msg)
                     if progress_cb:
                         progress_cb(wait_msg)
                     time.sleep(67)
                     try:
-                        s2 = driver.find_element(
+                        driver.find_element(
                             By.CSS_SELECTOR,
                             "button[type='button'].btn-primary, button.btn-success"
-                        )
-                        s2.click()
+                        ).click()
                         time.sleep(4)
                     except Exception:
                         pass
 
                 results["loops_done"] += 1
                 results["sent"] += 50
-                done_msg = f"✅ loop {i+1}/{loops} — ~{results['sent']} {service} sent"
+                done_msg = (
+                    f"✅ loop {i+1}/{loops} — ~{results['sent']} {service} sent"
+                )
                 log.info(done_msg)
                 if progress_cb:
                     progress_cb(done_msg)
