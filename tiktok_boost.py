@@ -1,13 +1,12 @@
 # tiktok_boost.py
 # platform : TikTok
 # method   : automates zefoy.com
-# python   : 3.13 compatible — no distutils, no webdriver-manager, no undetected-chromedriver
+# selenium : 4.9.1 — last version before DriverFinder broke manual service paths
 
 import time
 import random
 import logging
 import shutil
-import subprocess
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -32,19 +31,6 @@ SERVICE_LABELS = {
 SERVICES = list(SERVICE_LABELS.keys())
 
 
-def _get_chromium_version(binary: str) -> str | None:
-    """Extract major version number from chromium binary."""
-    try:
-        out = subprocess.check_output(
-            [binary, "--version"], stderr=subprocess.DEVNULL
-        ).decode().strip()
-        # output: "Chromium 120.0.6099.71" or "Google Chrome 120.0.6099.71"
-        version = out.split()[-1]          # "120.0.6099.71"
-        return version.split(".")[0]       # "120"
-    except Exception:
-        return None
-
-
 def _make_driver() -> webdriver.Chrome:
     chromium_bin = (
         shutil.which("chromium")
@@ -64,17 +50,16 @@ def _make_driver() -> webdriver.Chrome:
     opts.add_argument("--disable-gpu")
     opts.add_argument("--window-size=1280,800")
     opts.add_argument("--disable-blink-features=AutomationControlled")
+    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
+    opts.add_experimental_option("useAutomationExtension", False)
     opts.add_argument(
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/120.0.0.0 Safari/537.36"
     )
-    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
-    opts.add_experimental_option("useAutomationExtension", False)
 
-    # selenium 4.15.2: pass service explicitly — disables internal driver finder
+    # selenium 4.9.1: Service(executable_path=...) works cleanly, no DriverFinder
     service = Service(executable_path=chromedriver_bin)
-
     driver = webdriver.Chrome(service=service, options=opts)
     driver.execute_script(
         "Object.defineProperty(navigator,'webdriver',{get:()=>undefined})"
@@ -158,9 +143,7 @@ def boost_tiktok(
 
                 results["loops_done"] += 1
                 results["sent"] += 50
-                done_msg = (
-                    f"✅ loop {i+1}/{loops} — ~{results['sent']} {service} sent"
-                )
+                done_msg = f"✅ loop {i+1}/{loops} — ~{results['sent']} {service} sent"
                 log.info(done_msg)
                 if progress_cb:
                     progress_cb(done_msg)
