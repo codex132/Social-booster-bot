@@ -1,7 +1,6 @@
 # instagram_boost.py
 # platform : Instagram
-# method   : follow-back
-# python   : 3.13 compatible
+# selenium : 4.9.1
 
 import time
 import random
@@ -39,13 +38,13 @@ def _make_driver() -> webdriver.Chrome:
     opts.add_argument("--disable-gpu")
     opts.add_argument("--window-size=375,812")
     opts.add_argument("--disable-blink-features=AutomationControlled")
+    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
+    opts.add_experimental_option("useAutomationExtension", False)
     opts.add_argument(
         "user-agent=Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) "
         "AppleWebKit/605.1.15 (KHTML, like Gecko) "
         "Version/16.6 Mobile/15E148 Safari/604.1"
     )
-    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
-    opts.add_experimental_option("useAutomationExtension", False)
 
     service = Service(executable_path=chromedriver_bin)
     driver = webdriver.Chrome(service=service, options=opts)
