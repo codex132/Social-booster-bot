@@ -1,0 +1,8 @@
+[phases.build]
+cmds = [
+  "apt-get install -y chromium chromium-driver || true",
+  "pip install -r requirements.txt"
+]
+
+[start]
+cmd = "python bot.py"
