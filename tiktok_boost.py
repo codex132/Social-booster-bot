@@ -6,6 +6,7 @@
 import time
 import random
 import logging
+import shutil
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -13,13 +14,11 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
 
 log = logging.getLogger(__name__)
 
 ZEFOY_URL = "https://zefoy.com"
 
-# map user-friendly names → text zefoy shows on its buttons
 SERVICE_LABELS = {
     "followers":     "followers",
     "views":         "views",
@@ -47,18 +46,21 @@ def _make_driver() -> webdriver.Chrome:
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/124.0.0.0 Safari/537.36"
     )
-    # try system chromium first (Termux / Linux), fall back to webdriver-manager
-    try:
-        opts.binary_location = "/usr/bin/chromium"
-        driver = webdriver.Chrome(options=opts)
-    except Exception:
-        try:
-            opts.binary_location = "/usr/bin/chromium-browser"
-            driver = webdriver.Chrome(options=opts)
-        except Exception:
-            driver = webdriver.Chrome(
-                service=Service(ChromeDriverManager().install()), options=opts
-            )
+
+    chromium_bin = (
+        shutil.which("chromium")
+        or shutil.which("chromium-browser")
+        or "/usr/bin/chromium"
+    )
+    chromedriver_bin = (
+        shutil.which("chromedriver")
+        or "/usr/bin/chromedriver"
+    )
+
+    opts.binary_location = chromium_bin
+    service = Service(executable_path=chromedriver_bin)
+
+    driver = webdriver.Chrome(service=service, options=opts)
     driver.execute_script(
         "Object.defineProperty(navigator,'webdriver',{get:()=>undefined})"
     )
@@ -82,10 +84,6 @@ def boost_tiktok(
     loops: int = 5,
     progress_cb=None,
 ) -> dict:
-    """
-    Automate zefoy.com for TikTok boosts.
-    Each loop delivers ~50 of the chosen service after a ~65 s cooldown.
-    """
     results = {"sent": 0, "loops_done": 0, "errors": []}
     driver = _make_driver()
 
