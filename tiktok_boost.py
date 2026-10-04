@@ -1,18 +1,13 @@
 # tiktok_boost.py
 # platform : TikTok
 # method   : automates zefoy.com
-# runtime  : Railway via cypress/browsers Docker image (Chrome pre-installed)
+# runtime  : playwright — bundles its own chromium, zero selenium/chromedriver issues
 
 import time
 import random
 import logging
-
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+import asyncio
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
 log = logging.getLogger(__name__)
 
@@ -30,42 +25,6 @@ SERVICE_LABELS = {
 SERVICES = list(SERVICE_LABELS.keys())
 
 
-def _make_driver() -> webdriver.Chrome:
-    opts = Options()
-    opts.add_argument("--headless=new")
-    opts.add_argument("--no-sandbox")
-    opts.add_argument("--disable-dev-shm-usage")
-    opts.add_argument("--disable-gpu")
-    opts.add_argument("--window-size=1280,800")
-    opts.add_argument("--disable-blink-features=AutomationControlled")
-    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
-    opts.add_experimental_option("useAutomationExtension", False)
-    opts.add_argument(
-        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/120.0.0.0 Safari/537.36"
-    )
-
-    # cypress/browsers image has chromedriver at /usr/local/bin/chromedriver
-    service = Service(executable_path="/usr/local/bin/chromedriver")
-    driver = webdriver.Chrome(service=service, options=opts)
-    driver.execute_script(
-        "Object.defineProperty(navigator,'webdriver',{get:()=>undefined})"
-    )
-    return driver
-
-
-def _find_service_btn(driver, service: str):
-    label = SERVICE_LABELS.get(service, service).lower()
-    containers = driver.find_elements(By.CSS_SELECTOR, "div.col-sm-4, div.card")
-    for c in containers:
-        if label in c.text.lower():
-            btns = c.find_elements(By.TAG_NAME, "button")
-            if btns:
-                return btns[0]
-    return None
-
-
 def boost_tiktok(
     url: str,
     service: str = "followers",
@@ -73,84 +32,106 @@ def boost_tiktok(
     progress_cb=None,
 ) -> dict:
     results = {"sent": 0, "loops_done": 0, "errors": []}
-    driver = _make_driver()
 
-    try:
-        driver.get(ZEFOY_URL)
-        time.sleep(4)
-
-        WebDriverWait(driver, 25).until(
-            EC.presence_of_element_located(
-                (By.CSS_SELECTOR, "div.col-sm-4, div.card")
-            )
+    with sync_playwright() as p:
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+            ]
         )
+        context = browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            viewport={"width": 1280, "height": 800},
+        )
+        page = context.new_page()
 
-        btn = _find_service_btn(driver, service)
-        if not btn:
-            results["errors"].append(
-                f"service '{service}' not found on zefoy today"
-            )
-            return results
-
-        btn.click()
-        time.sleep(2)
-
-        for i in range(loops):
-            try:
-                inp = WebDriverWait(driver, 12).until(
-                    EC.presence_of_element_located(
-                        (By.CSS_SELECTOR, "input[type='text']")
-                    )
-                )
-                inp.clear()
-                inp.send_keys(url)
-                time.sleep(random.uniform(0.8, 1.8))
-
-                submit = driver.find_element(
-                    By.CSS_SELECTOR,
-                    "button[type='button'].btn-primary, button.btn-success"
-                )
-                submit.click()
-                time.sleep(random.uniform(3, 5))
-
-                src = driver.page_source.lower()
-                if any(w in src for w in ("please wait", "cooldown", "timer")):
-                    wait_msg = f"⏱ loop {i+1}: cooldown — waiting 65 s"
-                    log.info(wait_msg)
-                    if progress_cb:
-                        progress_cb(wait_msg)
-                    time.sleep(67)
-                    try:
-                        driver.find_element(
-                            By.CSS_SELECTOR,
-                            "button[type='button'].btn-primary, button.btn-success"
-                        ).click()
-                        time.sleep(4)
-                    except Exception:
-                        pass
-
-                results["loops_done"] += 1
-                results["sent"] += 50
-                done_msg = f"✅ loop {i+1}/{loops} — ~{results['sent']} {service} sent"
-                log.info(done_msg)
-                if progress_cb:
-                    progress_cb(done_msg)
-
-                if i < loops - 1:
-                    time.sleep(random.uniform(60, 70))
-
-            except Exception as e:
-                err = f"loop {i+1}: {e}"
-                results["errors"].append(err)
-                log.warning(err)
-                if progress_cb:
-                    progress_cb(f"⚠️ {err}")
-                time.sleep(10)
-
-    finally:
         try:
-            driver.quit()
-        except Exception:
-            pass
+            page.goto(ZEFOY_URL, timeout=30000)
+            page.wait_for_load_state("networkidle", timeout=15000)
+            time.sleep(2)
+
+            # find the service container and click its button
+            service_label = SERVICE_LABELS.get(service, service).lower()
+            found = False
+
+            containers = page.query_selector_all("div.col-sm-4, div.card")
+            for c in containers:
+                if service_label in (c.inner_text() or "").lower():
+                    btn = c.query_selector("button")
+                    if btn:
+                        btn.click()
+                        found = True
+                        break
+
+            if not found:
+                results["errors"].append(
+                    f"service '{service}' not found on zefoy today"
+                )
+                return results
+
+            time.sleep(2)
+
+            for i in range(loops):
+                try:
+                    inp = page.wait_for_selector(
+                        "input[type='text']", timeout=12000
+                    )
+                    inp.fill("")
+                    inp.type(url, delay=50)
+                    time.sleep(random.uniform(0.8, 1.8))
+
+                    submit = page.query_selector(
+                        "button[type='button'].btn-primary, button.btn-success"
+                    )
+                    if submit:
+                        submit.click()
+                    time.sleep(random.uniform(3, 5))
+
+                    content = page.content().lower()
+                    if any(w in content for w in ("please wait", "cooldown", "timer")):
+                        wait_msg = f"⏱ loop {i+1}: cooldown — waiting 65 s"
+                        log.info(wait_msg)
+                        if progress_cb:
+                            progress_cb(wait_msg)
+                        time.sleep(67)
+                        try:
+                            s2 = page.query_selector(
+                                "button[type='button'].btn-primary, button.btn-success"
+                            )
+                            if s2:
+                                s2.click()
+                            time.sleep(4)
+                        except Exception:
+                            pass
+
+                    results["loops_done"] += 1
+                    results["sent"] += 50
+                    done_msg = (
+                        f"✅ loop {i+1}/{loops} — ~{results['sent']} {service} sent"
+                    )
+                    log.info(done_msg)
+                    if progress_cb:
+                        progress_cb(done_msg)
+
+                    if i < loops - 1:
+                        time.sleep(random.uniform(60, 70))
+
+                except Exception as e:
+                    err = f"loop {i+1}: {e}"
+                    results["errors"].append(err)
+                    log.warning(err)
+                    if progress_cb:
+                        progress_cb(f"⚠️ {err}")
+                    time.sleep(10)
+
+        finally:
+            browser.close()
 
     return results
