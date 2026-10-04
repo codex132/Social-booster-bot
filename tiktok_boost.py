@@ -1,12 +1,11 @@
 # tiktok_boost.py
 # platform : TikTok
 # method   : automates zefoy.com
-# selenium : 4.9.1 — last version before DriverFinder broke manual service paths
+# runtime  : Railway via cypress/browsers Docker image (Chrome pre-installed)
 
 import time
 import random
 import logging
-import shutil
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -32,18 +31,7 @@ SERVICES = list(SERVICE_LABELS.keys())
 
 
 def _make_driver() -> webdriver.Chrome:
-    chromium_bin = (
-        shutil.which("chromium")
-        or shutil.which("chromium-browser")
-        or "/usr/bin/chromium"
-    )
-    chromedriver_bin = (
-        shutil.which("chromedriver")
-        or "/usr/bin/chromedriver"
-    )
-
     opts = Options()
-    opts.binary_location = chromium_bin
     opts.add_argument("--headless=new")
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-dev-shm-usage")
@@ -58,8 +46,8 @@ def _make_driver() -> webdriver.Chrome:
         "Chrome/120.0.0.0 Safari/537.36"
     )
 
-    # selenium 4.9.1: Service(executable_path=...) works cleanly, no DriverFinder
-    service = Service(executable_path=chromedriver_bin)
+    # cypress/browsers image has chromedriver at /usr/local/bin/chromedriver
+    service = Service(executable_path="/usr/local/bin/chromedriver")
     driver = webdriver.Chrome(service=service, options=opts)
     driver.execute_script(
         "Object.defineProperty(navigator,'webdriver',{get:()=>undefined})"
