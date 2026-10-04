@@ -1,11 +1,14 @@
-FROM cypress/browsers:latest
+FROM python:3.11-slim
 
-# install python3 + pip
-RUN apt-get update && apt-get install -y python3 python3-pip
+RUN apt-get update && apt-get install -y \
+    wget curl gnupg \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip3 install -r requirements.txt --break-system-packages
+RUN pip install -r requirements.txt
+RUN playwright install chromium
+RUN playwright install-deps chromium
 
 COPY . .
 
-CMD python3 bot.py
+CMD ["python3", "bot.py"]
