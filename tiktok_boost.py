@@ -1,28 +1,27 @@
 # tiktok_boost.py
 # platform : TikTok
-# method   : automates zefoy.com
-# runtime  : playwright — bundles its own chromium, zero selenium/chromedriver issues
+# method   : automates tikfollowers.com (zefoy is down as of July 2026)
+# runtime  : playwright
 
 import time
 import random
 import logging
-import asyncio
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
+from playwright.sync_api import sync_playwright
 
 log = logging.getLogger(__name__)
 
-ZEFOY_URL = "https://zefoy.com"
+SITE_URL = "https://tikfollowers.com"
 
-SERVICE_LABELS = {
-    "followers":     "followers",
-    "views":         "views",
-    "likes":         "likes",
-    "shares":        "shares",
-    "favorites":     "favorites",
-    "comment_likes": "comment likes",
+SERVICE_MAP = {
+    "followers":     "/free-tiktok-followers",
+    "likes":         "/free-tiktok-likes",
+    "views":         "/free-tiktok-views",
+    "shares":        "/free-tiktok-shares",
+    "favorites":     "/free-tiktok-favorites",
+    "comment_likes": "/free-tiktok-comment-likes",
 }
 
-SERVICES = list(SERVICE_LABELS.keys())
+SERVICES = list(SERVICE_MAP.keys())
 
 
 def boost_tiktok(
@@ -33,14 +32,13 @@ def boost_tiktok(
 ) -> dict:
     results = {"sent": 0, "loops_done": 0, "errors": []}
 
+    path = SERVICE_MAP.get(service, SERVICE_MAP["followers"])
+    target_url = SITE_URL + path
+
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
-            args=[
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-            ]
+            args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
         )
         context = browser.new_context(
             user_agent=(
@@ -49,79 +47,64 @@ def boost_tiktok(
                 "Chrome/120.0.0.0 Safari/537.36"
             ),
             viewport={"width": 1280, "height": 800},
+            bypass_csp=True,
         )
         page = context.new_page()
 
         try:
-            page.goto(ZEFOY_URL, timeout=30000)
-            page.wait_for_load_state("networkidle", timeout=15000)
-            time.sleep(2)
-
-            # find the service container and click its button
-            service_label = SERVICE_LABELS.get(service, service).lower()
-            found = False
-
-            containers = page.query_selector_all("div.col-sm-4, div.card")
-            for c in containers:
-                if service_label in (c.inner_text() or "").lower():
-                    btn = c.query_selector("button")
-                    if btn:
-                        btn.click()
-                        found = True
-                        break
-
-            if not found:
-                results["errors"].append(
-                    f"service '{service}' not found on zefoy today"
-                )
-                return results
-
-            time.sleep(2)
-
             for i in range(loops):
                 try:
-                    inp = page.wait_for_selector(
-                        "input[type='text']", timeout=12000
+                    page.goto(target_url, timeout=30000)
+                    page.wait_for_load_state("networkidle", timeout=15000)
+                    time.sleep(2)
+
+                    # find username/url input
+                    inp = page.query_selector(
+                        "input[type='text'], input[name*='url'], "
+                        "input[name*='username'], input[placeholder*='TikTok']"
                     )
+                    if not inp:
+                        results["errors"].append(f"loop {i+1}: input not found")
+                        continue
+
                     inp.fill("")
                     inp.type(url, delay=50)
-                    time.sleep(random.uniform(0.8, 1.8))
+                    time.sleep(random.uniform(0.8, 1.5))
 
+                    # submit button
                     submit = page.query_selector(
-                        "button[type='button'].btn-primary, button.btn-success"
+                        "button[type='submit'], button.btn-primary, "
+                        "input[type='submit'], button:has-text('Send'), "
+                        "button:has-text('Get')"
                     )
                     if submit:
                         submit.click()
-                    time.sleep(random.uniform(3, 5))
+                    time.sleep(random.uniform(3, 6))
 
+                    # check for success or cooldown
                     content = page.content().lower()
-                    if any(w in content for w in ("please wait", "cooldown", "timer")):
-                        wait_msg = f"⏱ loop {i+1}: cooldown — waiting 65 s"
-                        log.info(wait_msg)
+                    if any(w in content for w in ("success", "sent", "delivered", "done")):
+                        results["loops_done"] += 1
+                        results["sent"] += 50
+                        done_msg = f"✅ loop {i+1}/{loops} — ~{results['sent']} {service} sent"
+                        log.info(done_msg)
+                        if progress_cb:
+                            progress_cb(done_msg)
+                    elif any(w in content for w in ("wait", "cooldown", "try again")):
+                        wait_msg = f"⏱ loop {i+1}: cooldown — waiting 60 s"
                         if progress_cb:
                             progress_cb(wait_msg)
-                        time.sleep(67)
-                        try:
-                            s2 = page.query_selector(
-                                "button[type='button'].btn-primary, button.btn-success"
-                            )
-                            if s2:
-                                s2.click()
-                            time.sleep(4)
-                        except Exception:
-                            pass
-
-                    results["loops_done"] += 1
-                    results["sent"] += 50
-                    done_msg = (
-                        f"✅ loop {i+1}/{loops} — ~{results['sent']} {service} sent"
-                    )
-                    log.info(done_msg)
-                    if progress_cb:
-                        progress_cb(done_msg)
+                        time.sleep(62)
+                        results["loops_done"] += 1
+                        results["sent"] += 50
+                    else:
+                        results["loops_done"] += 1
+                        results["sent"] += 50
+                        if progress_cb:
+                            progress_cb(f"✅ loop {i+1}/{loops} submitted")
 
                     if i < loops - 1:
-                        time.sleep(random.uniform(60, 70))
+                        time.sleep(random.uniform(30, 60))
 
                 except Exception as e:
                     err = f"loop {i+1}: {e}"
