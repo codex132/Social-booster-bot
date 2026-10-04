@@ -1,11 +1,10 @@
 # instagram_boost.py
 # platform : Instagram
-# selenium : 4.9.1
+# runtime  : Railway via cypress/browsers Docker image
 
 import time
 import random
 import logging
-import shutil
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -20,18 +19,7 @@ IG_BASE = "https://www.instagram.com"
 
 
 def _make_driver() -> webdriver.Chrome:
-    chromium_bin = (
-        shutil.which("chromium")
-        or shutil.which("chromium-browser")
-        or "/usr/bin/chromium"
-    )
-    chromedriver_bin = (
-        shutil.which("chromedriver")
-        or "/usr/bin/chromedriver"
-    )
-
     opts = Options()
-    opts.binary_location = chromium_bin
     opts.add_argument("--headless=new")
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-dev-shm-usage")
@@ -46,7 +34,7 @@ def _make_driver() -> webdriver.Chrome:
         "Version/16.6 Mobile/15E148 Safari/604.1"
     )
 
-    service = Service(executable_path=chromedriver_bin)
+    service = Service(executable_path="/usr/local/bin/chromedriver")
     driver = webdriver.Chrome(service=service, options=opts)
     return driver
 
@@ -130,8 +118,7 @@ def boost_instagram(
                         By.XPATH, "//div[@role='dialog']"
                     )
                     driver.execute_script(
-                        "arguments[0].scrollTop = arguments[0].scrollHeight",
-                        modal
+                        "arguments[0].scrollTop = arguments[0].scrollHeight", modal
                     )
                 except Exception:
                     driver.execute_script(
@@ -146,9 +133,7 @@ def boost_instagram(
                 if followed >= follow_count:
                     break
                 try:
-                    driver.execute_script(
-                        "arguments[0].scrollIntoView(true);", btn
-                    )
+                    driver.execute_script("arguments[0].scrollIntoView(true);", btn)
                     time.sleep(0.5)
                     btn.click()
                     followed += 1
@@ -163,17 +148,12 @@ def boost_instagram(
                     log.warning(f"skip: {e}")
 
             try:
-                modal = driver.find_element(
-                    By.XPATH, "//div[@role='dialog']"
-                )
+                modal = driver.find_element(By.XPATH, "//div[@role='dialog']")
                 driver.execute_script(
-                    "arguments[0].scrollTop = arguments[0].scrollHeight",
-                    modal
+                    "arguments[0].scrollTop = arguments[0].scrollHeight", modal
                 )
             except Exception:
-                driver.execute_script(
-                    "window.scrollTo(0, document.body.scrollHeight)"
-                )
+                driver.execute_script("window.scrollTo(0, document.body.scrollHeight)")
             time.sleep(2)
 
     finally:
